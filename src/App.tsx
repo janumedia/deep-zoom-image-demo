@@ -7,7 +7,7 @@ import ImageZoom from './components/ImageZoom';
 const App: Component = () => {
   return (
     <div class={styles.App}>
-      <ImageZoom></ImageZoom>
+      <ImageZoom src="/images/TM-10016388/imageproxy.json"></ImageZoom>
     </div>
   );
 };

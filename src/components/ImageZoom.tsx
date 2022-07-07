@@ -1,8 +1,5 @@
 import { onMount } from "solid-js";
 
-const canvasW:number = 1164;
-const canvasH:number = 1579;
-
 const ZOOM_SPEED:number = 0.1;
 const BASED_TILE_SIZE:number = 256;
 const threshold:number = 10; // minimum area tile showing up for loading image
@@ -30,20 +27,24 @@ interface Tile {
     basedNum:number
 }
 
-function ImageZoom() {
+interface ImageZoomProp {
+    src:string
+}
+
+function ImageZoom(props:ImageZoomProp) {
     let canvas: HTMLCanvasElement | undefined;
     let wrapper: HTMLDivElement | undefined;
     let context: CanvasRenderingContext2D | null;
 
+    let canvasOriW:number = 0;
+    let canvasOriH:number = 0;
+    let canvasW: number = canvasOriW;
+    let canvasH: number = canvasOriH;
+
     // cached canvas
     // use to saved original rendered canvas
     let cachedCanvas: HTMLCanvasElement = document.createElement("canvas");
-    cachedCanvas.width = canvasW;
-    cachedCanvas.height = canvasH;
     let cachedCtx: CanvasRenderingContext2D | null = cachedCanvas.getContext("2d");
-
-    let cW: number = canvasW;
-    let cH: number = canvasH;
 
     let prevX: number = 0;
     let prevY: number = 0;
@@ -60,49 +61,63 @@ function ImageZoom() {
     let prevNumTileX:number = 0;
     let images:HTMLImageElement[] = [];
 
-    onMount(() => {
+    const strs:string[] = props.src.split("/");
+    let imageFolder:string = strs[strs.length-2];
+
+    onMount(async() => {
         // set canvas context
         context = canvas!.getContext("2d");
+        
+        // get image data
+        const data = await fetch(props.src).then(res => res.json());
+        canvasOriW = data.width;
+        canvasOriH = data.height;
+        canvasW = canvasOriW;
+        canvasH = canvasOriH;
+        cachedCanvas.width = canvasOriW;
+        cachedCanvas.height = canvasOriH;
 
-        wrapper!.addEventListener("wheel", e => {
-            e.preventDefault();
-
-            const { ratioX, ratioY, offsetX, offsetY } = ratio(e.pageX, e.pageY, cW, cH);
-
-            if (e.deltaY < 0) {
-                cW += cW * ZOOM_SPEED;
-                cH += cH * ZOOM_SPEED;
-            } else {
-                cW -= cW * ZOOM_SPEED;
-                cH -= cH * ZOOM_SPEED;
-            }
-            protectSize();
-
-            prevX = offsetX - (cW * ratioX);
-            prevY = offsetY - (cH * ratioY);
-
-            translateX = Math.floor(prevX);
-            translateY = Math.floor(prevY);
-            redraw();
-        });
-        wrapper?.addEventListener("pointerdown", e => {
-            wrapper?.setPointerCapture(e.pointerId);
-            pointers.push({ start: e });
-            if (pointers.length == 2) {
-                zoomScale = 1; // always reset value
-                pinchedDistanceStart = Math.hypot(pointers[0].start!.pageX - pointers[1].start!.pageX, pointers[0].start!.pageY - pointers[1].start!.pageY);
-            }
-            wrapper?.addEventListener("pointermove", handlePointerMove);
-            wrapper?.addEventListener("pointerleave", handlePointerLeave);
-        });
+        wrapper?.addEventListener("wheel", handleWeel);
+        wrapper?.addEventListener("pointerdown", handlePointerDown);
         wrapper?.addEventListener("pointerup", handlePointerLeave);
         wrapper?.addEventListener("pointercancel", handlePointerLeave);
 
         window.addEventListener("resize", handleWindowResize);
-
+        
         handleWindowResize();
     });
 
+    function handleWeel(e:WheelEvent) {
+        e.preventDefault();
+
+        const { ratioX, ratioY, offsetX, offsetY } = ratio(e.pageX, e.pageY, canvasW, canvasH);
+
+        if (e.deltaY < 0) {
+            canvasW += canvasW * ZOOM_SPEED;
+            canvasH += canvasH * ZOOM_SPEED;
+        } else {
+            canvasW -= canvasW * ZOOM_SPEED;
+            canvasH -= canvasH * ZOOM_SPEED;
+        }
+        protectSize();
+
+        prevX = offsetX - (canvasW * ratioX);
+        prevY = offsetY - (canvasH * ratioY);
+
+        translateX = Math.floor(prevX);
+        translateY = Math.floor(prevY);
+        redraw();
+    }
+    function handlePointerDown(e: PointerEvent) {
+        wrapper?.setPointerCapture(e.pointerId);
+        pointers.push({ start: e });
+        if (pointers.length == 2) {
+            zoomScale = 1; // always reset value
+            pinchedDistanceStart = Math.hypot(pointers[0].start!.pageX - pointers[1].start!.pageX, pointers[0].start!.pageY - pointers[1].start!.pageY);
+        }
+        wrapper?.addEventListener("pointermove", handlePointerMove);
+        wrapper?.addEventListener("pointerleave", handlePointerLeave);
+    }
     function handlePointerMove(e: PointerEvent) {
         e.preventDefault();
         
@@ -122,19 +137,19 @@ function ImageZoom() {
             const distanceY:number = Math.abs(pointers[0].start!.pageY - pointers[1].start!.pageY) * .5;
             const centerX:number = pointers[0].start!.pageX < pointers[1].start!.pageX ? pointers[0].start!.pageX : pointers[1].start!.pageX;
             const centerY:number = pointers[0].start!.pageY < pointers[1].start!.pageY ? pointers[0].start!.pageY : pointers[1].start!.pageY;
-            const { ratioX, ratioY, offsetX, offsetY } = ratio((centerX + distanceX), (centerY + distanceY), cW, cH);
+            const { ratioX, ratioY, offsetX, offsetY } = ratio((centerX + distanceX), (centerY + distanceY), canvasW, canvasH);
 
             const tempScale: number = pinchedDistanceEnd / pinchedDistanceStart;
             const scale: number = tempScale / zoomScale;
 
             zoomScale = tempScale;
 
-            cW *= scale;
-            cH *= scale;
+            canvasW *= scale;
+            canvasH *= scale;
             protectSize();
 
-            prevX = offsetX - (cW * ratioX);
-            prevY = offsetY - (cH * ratioY);
+            prevX = offsetX - (canvasW * ratioX);
+            prevY = offsetY - (canvasH * ratioY);
 
             translateX = Math.floor(prevX);
             translateY = Math.floor(prevY);
@@ -161,14 +176,14 @@ function ImageZoom() {
     function handleWindowResize(e?:Event) {
         canvas.width = wrapper?.getBoundingClientRect().width;
         canvas.height = wrapper?.getBoundingClientRect().height;
-        const sourceVertical:boolean = canvasH / canvasW > canvas.height / canvas.width;
+        const sourceVertical:boolean = canvasOriH / canvasOriW > canvas.height / canvas.width;
         if(e == undefined) {
             if(sourceVertical) {
-                cH = (canvas?.getBoundingClientRect().height || canvasH);
-                cW = (canvasW / canvasH) * cH;
+                canvasH = (canvas?.getBoundingClientRect().height || canvasOriH);
+                canvasW = (canvasOriW / canvasOriH) * canvasH;
             } else {
-                cW = (canvas?.getBoundingClientRect().width || canvasW);
-                cH = (canvasH / canvasW) * cW;
+                canvasW = (canvas?.getBoundingClientRect().width || canvasOriW);
+                canvasH = (canvasOriH / canvasOriW) * canvasW;
                 
             }
         }
@@ -178,9 +193,9 @@ function ImageZoom() {
     }
 
     function moveToCenter(isVertical:boolean) {
-        const scale:number = cW / canvasW;
-        prevX = (canvas?.getBoundingClientRect().width || canvasW) * .5 - (cW * .5);
-        prevY = isVertical && canvas.height <= cH ? 0 : (canvas?.getBoundingClientRect().height || canvasW) * .5 - (cH * .5);
+        const scale:number = canvasW / canvasOriW;
+        prevX = (canvas?.getBoundingClientRect().width || canvasOriW) * .5 - (canvasW * .5);
+        prevY = isVertical && canvas.height <= canvasH ? 0 : (canvas?.getBoundingClientRect().height || canvasOriW) * .5 - (canvasH * .5);
         translateX = prevX;
         translateY = prevY;
 
@@ -188,8 +203,8 @@ function ImageZoom() {
     }
 
     function protectSize() {
-        if(cH > canvasH) cH = canvasH;
-        if(cW > canvasW) cW = canvasW;
+        if(canvasH > canvasOriH) canvasH = canvasOriH;
+        if(canvasW > canvasOriW) canvasW = canvasOriW;
 
         generateTiles();
     }
@@ -214,21 +229,21 @@ function ImageZoom() {
 
     function redraw () {
         canvas!.width = canvas!.width;
-        context?.drawImage(cachedCanvas, 0, 0, canvasW, canvasH, translateX, translateY, cW, cH);
+        context?.drawImage(cachedCanvas, 0, 0, canvasOriW, canvasOriH, translateX, translateY, canvasW, canvasH);
 
         loadTiles()
     };
 
     function generateTiles() {
 
-        let based:number = cW <= MIN_CANVAS_SIZE ? 4 : cW <= MIN_CANVAS_SIZE * 2 ? 2 : 1;
-        let scale:number =  cW / canvasW;
-        let tileSize:number = cW < canvasW ? BASED_TILE_SIZE * based * scale : BASED_TILE_SIZE;
-        let extraTileX:number = cW % tileSize > 0 ? 1 : 0;
-        let numTilesX:number = Math.floor(cW / tileSize) + extraTileX;
-        let extraTileY:number = cH % tileSize > 0 ? 1 : 0;
-        let numTilesY:number = Math.floor(cH / tileSize) + extraTileY;
-        let basedNum:number = BASED_PATHNUMBER + Math.floor(cW / 2 / tileSize);
+        let based:number = canvasW <= MIN_CANVAS_SIZE ? 4 : canvasW <= MIN_CANVAS_SIZE * 2 ? 2 : 1;
+        let scale:number =  canvasW / canvasOriW;
+        let tileSize:number = canvasW < canvasOriW ? BASED_TILE_SIZE * based * scale : BASED_TILE_SIZE;
+        let extraTileX:number = canvasW % tileSize > 0 ? 1 : 0;
+        let numTilesX:number = Math.floor(canvasW / tileSize) + extraTileX;
+        let extraTileY:number = canvasH % tileSize > 0 ? 1 : 0;
+        let numTilesY:number = Math.floor(canvasH / tileSize) + extraTileY;
+        let basedNum:number = BASED_PATHNUMBER + Math.floor(canvasW / 2 / tileSize);
 
         // only generate if will generate more tiles
         if(numTilesX <= prevNumTileX) return; 
@@ -262,31 +277,33 @@ function ImageZoom() {
     }
 
     function loadTiles() {
-        
-        let underlapX:number = translateX > 0 ? 0 : Math.abs(translateX);
-        let overlapX:number = translateX + cW - canvas?.width;
-        overlapX = overlapX < 0 ? 0 : overlapX;
-        let visibleX:number = cW - overlapX
-    
-        let underlapY:number = translateY > 0 ? 0 : Math.abs(translateY);
-        let overlapY:number = translateY + cH - canvas?.height;
-        overlapY = overlapY < 0 ? 0 : overlapY;
-        let visibleY:number = cH - overlapY;
 
-        let scale:number =  cW / canvasW;
+        if(!tiles || tiles.length < 1) return;
+        
+        let underlapH:number = translateX > 0 ? 0 : Math.abs(translateX);
+        let overlapH:number = translateX + canvasW - canvas?.width;
+        overlapH = overlapH < 0 ? 0 : overlapH;
+        let maxH:number = canvasW - overlapH
+    
+        let underlapV:number = translateY > 0 ? 0 : Math.abs(translateY);
+        let overlapV:number = translateY + canvasH - canvas?.height;
+        overlapV = overlapV < 0 ? 0 : overlapV;
+        let maxV:number = canvasH - overlapV;
+
+        let scale:number =  canvasW / canvasOriW;
         let tileSize:number = BASED_TILE_SIZE * 4 * scale;
 
         tiles.forEach((ty, y) => {
             ty.forEach((tx, x) => {
                 if(!tx.loaded) {
-                    let passedX:boolean = tx.x + tileSize > underlapX && tx.x + threshold <= visibleX;
-                    let passedY:boolean = tx.y + tx.size > underlapY && tx.y + threshold <= visibleY;
+                    let passedX:boolean = tx.x + tileSize > underlapH && tx.x + threshold <= maxH;
+                    let passedY:boolean = tx.y + tx.size > underlapV && tx.y + threshold <= maxV;
                     
                     if(passedX && passedY && !tx.loaded) {
                         tx.loaded = true;
                         let img = new Image()
                         img.onload = onImageLoaded;
-                        img.src = `/images/TM-10016388/${tx.basedNum}/${x}_${y}.jpg`;
+                        img.src = `/images/${imageFolder}/${tx.basedNum}/${x}_${y}.jpg`;
 
                         images.push(img);
                     }
@@ -322,7 +339,7 @@ function ImageZoom() {
         <>
             <h3>Image Zoom</h3>
             <div ref={wrapper} class="image-wrapper">
-                <canvas ref={canvas} width={canvasW} height={canvasH}></canvas>
+                <canvas ref={canvas} width={canvasOriW} height={canvasOriH}></canvas>
             </div>
         </>
     );
