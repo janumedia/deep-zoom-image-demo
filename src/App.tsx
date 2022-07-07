@@ -11,13 +11,13 @@ const App: Component = () => {
       <ImageZoom src="/images/TM-10016388/imageproxy.json"></ImageZoom>
       <div class="logos">
         <div>
-          <a href="https://github.com/janumedia/deep-zoom-image-demo" title="Source Code" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/janumedia" title="Source Code" target="_blank" rel="noopener noreferrer">
             <img src="/assets/github-logo.svg" height="24" alt="Github Logo"/>
           </a>
           <span>Source code</span>
         </div>
         <div>
-          <a href="https://www.tropenmuseum.nl/en" title="Source Photo" target="_blank" rel="noopener noreferrer">
+          <a href="https://www.tropenmuseum.nl" title="Source Photo" target="_blank" rel="noopener noreferrer">
             <img src="/assets/tropenmuseum-logo.svg" height="24" alt="Tropen Museum Logo"/>
           </a>
           <span>Photo courtesy</span>
