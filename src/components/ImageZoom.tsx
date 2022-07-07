@@ -286,7 +286,7 @@ function ImageZoom() {
                         tx.loaded = true;
                         let img = new Image()
                         img.onload = onImageLoaded;
-                        img.src = `/TM-10016388/${tx.basedNum}/${x}_${y}.jpg`;
+                        img.src = `/images/TM-10016388/${tx.basedNum}/${x}_${y}.jpg`;
 
                         images.push(img);
                     }
