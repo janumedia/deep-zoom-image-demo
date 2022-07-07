@@ -336,12 +336,9 @@ function ImageZoom(props:ImageZoomProp) {
     };
 
     return (
-        <>
-            <h3>Image Zoom</h3>
-            <div ref={wrapper} class="image-wrapper">
-                <canvas ref={canvas} width={canvasOriW} height={canvasOriH}></canvas>
-            </div>
-        </>
+        <div ref={wrapper} class="image-wrapper">
+            <canvas ref={canvas} width={canvasOriW} height={canvasOriH}></canvas>
+        </div>
     );
 }
 
