@@ -1,4 +1,4 @@
-import { onMount } from "solid-js";
+import { createSignal, onMount } from "solid-js";
 
 const ZOOM_SPEED:number = 0.1;
 const BASED_TILE_SIZE:number = 256;
@@ -105,6 +105,8 @@ function ImageZoom(props:ImageZoomProp) {
     const strs:string[] = props.src.split("/");
     let imageFolder:string = strs[strs.length-2];
     let format:string = "dzi";
+    
+    const [caption, setCaption] = createSignal("");
 
     onMount(async() => {
         // set canvas context
@@ -123,6 +125,8 @@ function ImageZoom(props:ImageZoomProp) {
         
         // generate tile pyramid
         tilesPyramid = generateTilePyramid(canvasOriW, canvasOriH, format);
+
+        setCaption(`${data.copyright} | ${data.caption}`)
         
         wrapper?.addEventListener("wheel", handleWeel);
         wrapper?.addEventListener("pointerdown", handlePointerDown);
@@ -394,6 +398,7 @@ function ImageZoom(props:ImageZoomProp) {
     return (
         <div ref={wrapper} class="image-wrapper">
             <canvas ref={canvas} width={3499} height={2648}></canvas>
+            <div class="caption">{caption()}</div>
         </div>
     );
 }
