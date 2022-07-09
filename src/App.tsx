@@ -20,7 +20,7 @@ const App: Component = () => {
           <a href="https://www.tropenmuseum.nl" title="Source Photo" target="_blank" rel="noopener noreferrer">
             <img src="/assets/tropenmuseum-logo.svg" height="24" alt="Tropen Museum Logo"/>
           </a>
-          <span>Photo courtesy</span>
+          <span>Source Photo</span>
         </div>
       </div>
     </div>

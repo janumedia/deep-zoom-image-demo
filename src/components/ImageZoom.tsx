@@ -2,10 +2,9 @@ import { onMount } from "solid-js";
 
 const ZOOM_SPEED:number = 0.1;
 const BASED_TILE_SIZE:number = 256;
-const threshold:number = 10; // minimum area tile showing up for loading image
 
-const MIN_CANVAS_SIZE:number = BASED_TILE_SIZE * 2;
-const BASED_PATHNUMBER:number = 9;
+const DZI_BASED_PATHNUMBER:number = 8;
+const ZOOMIFY_BASED_PATHNUMBER:number = 1;
 
 interface Pointer {
     start:PointerEvent,
@@ -21,14 +20,56 @@ interface TypeRatio  {
 
 interface Tile {
     loaded:boolean,
-    x:number,
-    y:number,
-    size:number,
+    sizeW:number,
+    sizeH:number,
     basedNum:number
+}
+
+interface TilePyramid {
+    pathNum:number,
+    tileXCount:number;
+    tileYCount:number;
+    canvasWidth:number,
+    canvasHeight:number
 }
 
 interface ImageZoomProp {
     src:string
+}
+
+function generateTilePyramid(w:number, h:number, format:string):TilePyramid[] {
+    let tiles:TilePyramid[] = [];
+    let size:number = w > h ? w : h;
+    let canvasWidth:number = w;
+    let canvasHeight:number = h;
+    let step:number = Math.round(Math.log(h/BASED_TILE_SIZE)/Math.log(2));
+    
+    while(size > BASED_TILE_SIZE) {
+        let len:number = size / BASED_TILE_SIZE;
+        
+        let lenW:number = Math.ceil(canvasWidth / BASED_TILE_SIZE);
+        let lenH:number = Math.ceil(canvasHeight / BASED_TILE_SIZE);
+
+        tiles.push({
+            pathNum: step,
+            tileXCount:lenW,
+            tileYCount:lenH,
+            canvasWidth,
+            canvasHeight
+        })
+
+        canvasWidth = Math.round(canvasWidth / 2);
+        canvasHeight = Math.round(canvasHeight / 2);
+        step--;
+        size /= 2;
+    }
+
+    return tiles.reverse();
+}
+
+function intersect(r1:DOMRect, r2:DOMRect):boolean {
+    if(r1.left >= r2.right || r2.left >= r1.right || r1.top >= r2.bottom || r2.top >= r1.bottom) return false;
+    return true;
 }
 
 function ImageZoom(props:ImageZoomProp) {
@@ -48,8 +89,8 @@ function ImageZoom(props:ImageZoomProp) {
 
     let prevX: number = 0;
     let prevY: number = 0;
-    let translateX: number = 0;
-    let translateY: number = 0;
+    let translateX: number = prevX;
+    let translateY: number = prevY;
     let zoomScale: number = 1;
 
     let pointers: Pointer[] = [];
@@ -58,11 +99,12 @@ function ImageZoom(props:ImageZoomProp) {
     let touchStarted: boolean = false;
 
     let tiles:Tile[][];
-    let prevNumTileX:number = 0;
     let images:HTMLImageElement[] = [];
+    let tilesPyramid:TilePyramid[];
 
     const strs:string[] = props.src.split("/");
     let imageFolder:string = strs[strs.length-2];
+    let format:string = "dzi";
 
     onMount(async() => {
         // set canvas context
@@ -70,13 +112,18 @@ function ImageZoom(props:ImageZoomProp) {
         
         // get image data
         const data = await fetch(props.src).then(res => res.json());
+        
+        format = data.format;
         canvasOriW = data.width;
         canvasOriH = data.height;
         canvasW = canvasOriW;
         canvasH = canvasOriH;
         cachedCanvas.width = canvasOriW;
         cachedCanvas.height = canvasOriH;
-
+        
+        // generate tile pyramid
+        tilesPyramid = generateTilePyramid(canvasOriW, canvasOriH, format);
+        
         wrapper?.addEventListener("wheel", handleWeel);
         wrapper?.addEventListener("pointerdown", handlePointerDown);
         wrapper?.addEventListener("pointerup", handlePointerLeave);
@@ -87,7 +134,7 @@ function ImageZoom(props:ImageZoomProp) {
         handleWindowResize();
     });
 
-    function handleWeel(e:WheelEvent) {
+    function handleWeel(e:WheelEvent): void {
         e.preventDefault();
 
         const { ratioX, ratioY, offsetX, offsetY } = ratio(e.pageX, e.pageY, canvasW, canvasH);
@@ -100,15 +147,13 @@ function ImageZoom(props:ImageZoomProp) {
             canvasH -= canvasH * ZOOM_SPEED;
         }
         protectSize();
-
+        
         prevX = offsetX - (canvasW * ratioX);
         prevY = offsetY - (canvasH * ratioY);
 
-        translateX = Math.floor(prevX);
-        translateY = Math.floor(prevY);
-        redraw();
+        zoomCanvas();
     }
-    function handlePointerDown(e: PointerEvent) {
+    function handlePointerDown(e: PointerEvent): void {
         wrapper?.setPointerCapture(e.pointerId);
         pointers.push({ start: e });
         if (pointers.length == 2) {
@@ -118,7 +163,7 @@ function ImageZoom(props:ImageZoomProp) {
         wrapper?.addEventListener("pointermove", handlePointerMove);
         wrapper?.addEventListener("pointerleave", handlePointerLeave);
     }
-    function handlePointerMove(e: PointerEvent) {
+    function handlePointerMove(e: PointerEvent): void {
         e.preventDefault();
         
         // update pointer values
@@ -151,14 +196,12 @@ function ImageZoom(props:ImageZoomProp) {
             prevX = offsetX - (canvasW * ratioX);
             prevY = offsetY - (canvasH * ratioY);
 
-            translateX = Math.floor(prevX);
-            translateY = Math.floor(prevY);
-            redraw();
+            zoomCanvas();
         }
 
         if (!touchStarted) touchStarted = true;
     }
-    function handlePointerLeave(e: PointerEvent) {
+    function handlePointerLeave(e: PointerEvent): void {
         if(pointers.length == 1 && touchStarted) {
             const currentPointer: Pointer = pointers.find(p => p.start.pointerId == e.pointerId) || { start: e };
             prevX = Math.floor(prevX + e.pageX - currentPointer.start.pageX);
@@ -192,8 +235,7 @@ function ImageZoom(props:ImageZoomProp) {
         moveToCenter(sourceVertical);
     }
 
-    function moveToCenter(isVertical:boolean) {
-        const scale:number = canvasW / canvasOriW;
+    function moveToCenter(isVertical:boolean): void {
         prevX = (canvas?.getBoundingClientRect().width || canvasOriW) * .5 - (canvasW * .5);
         prevY = isVertical && canvas.height <= canvasH ? 0 : (canvas?.getBoundingClientRect().height || canvasOriW) * .5 - (canvasH * .5);
         translateX = prevX;
@@ -202,11 +244,9 @@ function ImageZoom(props:ImageZoomProp) {
         redraw();
     }
 
-    function protectSize() {
+    function protectSize(): void {
         if(canvasH > canvasOriH) canvasH = canvasOriH;
         if(canvasW > canvasOriW) canvasW = canvasOriW;
-
-        generateTiles();
     }
 
     function ratio (x: number, y: number, w: number, h: number): TypeRatio {
@@ -227,84 +267,81 @@ function ImageZoom(props:ImageZoomProp) {
         };
     };
 
-    function redraw () {
+    function zoomCanvas():void {
+        translateX = Math.floor(prevX);
+        translateY = Math.floor(prevY);
+
+        generateTiles();
+        redraw();
+    }
+
+    function redraw (): void {
         canvas!.width = canvas!.width;
         context?.drawImage(cachedCanvas, 0, 0, canvasOriW, canvasOriH, translateX, translateY, canvasW, canvasH);
 
         loadTiles()
     };
 
-    function generateTiles() {
+    let prevTilePyrnamid:TilePyramid|undefined;
+    function generateTiles():void {
+        let tile:TilePyramid|undefined = tilesPyramid.find(t => t.canvasWidth * 1.5 >= canvasW);
+        if(prevTilePyrnamid && prevTilePyrnamid.pathNum >= tile!.pathNum) return;
+        prevTilePyrnamid = tile;
 
-        let based:number = canvasW <= MIN_CANVAS_SIZE ? 4 : canvasW <= MIN_CANVAS_SIZE * 2 ? 2 : 1;
-        let scale:number =  canvasW / canvasOriW;
-        let tileSize:number = canvasW < canvasOriW ? BASED_TILE_SIZE * based * scale : BASED_TILE_SIZE;
-        let extraTileX:number = canvasW % tileSize > 0 ? 1 : 0;
-        let numTilesX:number = Math.floor(canvasW / tileSize) + extraTileX;
-        let extraTileY:number = canvasH % tileSize > 0 ? 1 : 0;
-        let numTilesY:number = Math.floor(canvasH / tileSize) + extraTileY;
-        let basedNum:number = BASED_PATHNUMBER + Math.floor(canvasW / 2 / tileSize);
-
-        // only generate if will generate more tiles
-        if(numTilesX <= prevNumTileX) return; 
-        prevNumTileX = numTilesX;
+        // reset tiles  
+        tiles = [];
 
         // cleans up images
         images.forEach(img => img.onload = null);
         images = [];
 
-        // reset tiles
-        tiles = [];
-
         let y:number = 0;
-        while(y < numTilesY) {
+        let lenX:number = tile!.tileXCount;
+        let lenY:number = tile!.tileYCount;
+        let pathNum:number = tile!.pathNum;
+        let lastTileW:number = tile!.canvasWidth % BASED_TILE_SIZE;
+        let lastTileH:number = tile!.canvasHeight % BASED_TILE_SIZE;
+
+        while(y < tile!.tileYCount) {
             let x:number = 0;
             let subTiles:Tile[] = [];
-            while(x < numTilesX) {
+            
+            while(x < lenX) {
                 subTiles.push({
                     loaded: false,
-                    x: x * tileSize,
-                    y: y * tileSize,
-                    size: tileSize,
-                    basedNum
+                    sizeW: (x < lenX - 1 ? BASED_TILE_SIZE : lastTileW),
+                    sizeH: (y < lenY - 1 ? BASED_TILE_SIZE : lastTileH),
+                    basedNum:pathNum
                 });
                 x++;
             }
             tiles.push(subTiles)
             y++;
         }
-        console.log(basedNum, "make tiles", tiles[0].length)
     }
 
     function loadTiles() {
-
-        if(!tiles || tiles.length < 1) return;
         
-        let underlapH:number = translateX > 0 ? 0 : Math.abs(translateX);
-        let overlapH:number = translateX + canvasW - canvas?.width;
-        overlapH = overlapH < 0 ? 0 : overlapH;
-        let maxH:number = canvasW - overlapH
-    
-        let underlapV:number = translateY > 0 ? 0 : Math.abs(translateY);
-        let overlapV:number = translateY + canvasH - canvas?.height;
-        overlapV = overlapV < 0 ? 0 : overlapV;
-        let maxV:number = canvasH - overlapV;
+        let scale:number = 1 / Math.pow(2, prevTilePyrnamid?.pathNum - (format == "dzi" ? 1 : 0));
+        // TODO: in case canvas height smaller than based tile size
+        if(scale == 1 && (canvas?.height < BASED_TILE_SIZE)) scale = canvasH / canvasOriH;
 
-        let scale:number =  canvasW / canvasOriW;
-        let tileSize:number = BASED_TILE_SIZE * 4 * scale;
+        let tileSize:number = BASED_TILE_SIZE * scale;
+        
+        const viewPort:DOMRect = new DOMRect(0, 0, canvas?.width, canvas?.height);
 
         tiles.forEach((ty, y) => {
-            ty.forEach((tx, x) => {
+            ty.forEach((tx, x) => { 
                 if(!tx.loaded) {
-                    let passedX:boolean = tx.x + tileSize > underlapH && tx.x + threshold <= maxH;
-                    let passedY:boolean = tx.y + tx.size > underlapV && tx.y + threshold <= maxV;
+                    if(tx.loaded) return;
                     
-                    if(passedX && passedY && !tx.loaded) {
+                    let intersected = intersect(viewPort, new DOMRect(x * tileSize + translateX * scale, y * tileSize + translateY * scale, tx.sizeW * scale, tx.sizeH * scale));
+                    if(intersected && !tx.loaded) {
                         tx.loaded = true;
-                        let img = new Image()
-                        img.onload = onImageLoaded;
-                        img.src = `/images/${imageFolder}/${tx.basedNum}/${x}_${y}.jpg`;
-
+                        let img:HTMLImageElement = new Image()
+                        img.onload = onImageLoaded
+                        img.src = format == "dzi" ? `/images/${imageFolder}/${DZI_BASED_PATHNUMBER + tx.basedNum}/${x}_${y}.jpg`: `/images/${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + tx.basedNum}-${x}-${y}.jpg`;
+                        // add image to list for clean's up
                         images.push(img);
                     }
                 }
@@ -316,14 +353,33 @@ function ImageZoom(props:ImageZoomProp) {
 
         const img: HTMLImageElement = e.currentTarget as HTMLImageElement;
 
-        // DZI (deep zoom image format)
-        const chars: string[] = img.src.split("/");
-        const basedChar: number = parseInt(chars[chars.length - 2]);
-        const posChars: string[] = chars[chars.length - 1].split("_");
-        const posXChars: number = parseInt(posChars[0]);
-        const posYChars: number = parseInt(posChars[1]);
-        const basedValue: number = basedChar <= 9 ? 4 : basedChar < 11 ? 2 : 1;
+        const  chars: string[] = img.src.split("/");
 
+        let posChars: string[];
+        let posXChars:number;
+        let posYChars:number;
+        let basedChar: number;
+        let basedValue:number
+
+        switch(format) {
+            default:
+            case "dzi":
+                posChars = chars[chars.length - 1].split("_");
+                posXChars = parseInt(posChars[0]);
+                posYChars = parseInt(posChars[1]);
+                basedChar = parseInt(chars[chars.length - 2]);
+                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar-8);
+                break; 
+
+            case "zoomify":
+                posChars = chars[chars.length - 1].split("-");
+                basedChar = parseInt(posChars[0]);
+                posXChars = parseInt(posChars[1]);
+                posYChars = parseInt(posChars[2]);
+                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar);
+                break;
+        }
+        
         if (!canvas) return;
 
         // update and save to temp canvas
@@ -337,7 +393,7 @@ function ImageZoom(props:ImageZoomProp) {
 
     return (
         <div ref={wrapper} class="image-wrapper">
-            <canvas ref={canvas} width={canvasOriW} height={canvasOriH}></canvas>
+            <canvas ref={canvas} width={3499} height={2648}></canvas>
         </div>
     );
 }
