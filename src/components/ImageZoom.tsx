@@ -171,7 +171,7 @@ function ImageZoom(props:ImageZoomProp) {
     }
     function handlePointerMove(e: PointerEvent): void {
         e.preventDefault();
-        setCaption(typeof e)
+        
         // update pointer values
         pointers = pointers.map(p => p.start.pointerId == e.pointerId ? { ...p, updated: e } : p);
 
@@ -346,7 +346,7 @@ function ImageZoom(props:ImageZoomProp) {
             }
    
         })
-        
+
         //cleans up loaded
         tiles = tiles.filter(t => !t.loaded);
     }
