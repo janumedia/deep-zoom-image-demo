@@ -19,7 +19,9 @@ interface TypeRatio  {
 }
 
 interface Tile {
-    loaded:boolean,
+    loaded:boolean, 
+    x:number,
+    y:number,
     sizeW:number,
     sizeH:number,
     basedNum:number
@@ -43,10 +45,10 @@ function generateTilePyramid(w:number, h:number, format:string):TilePyramid[] {
     let canvasWidth:number = w;
     let canvasHeight:number = h;
     let step:number = Math.round(Math.log(h/BASED_TILE_SIZE)/Math.log(2));
-    
+
     while(size > BASED_TILE_SIZE) {
         let len:number = size / BASED_TILE_SIZE;
-        
+
         let lenW:number = Math.ceil(canvasWidth / BASED_TILE_SIZE);
         let lenH:number = Math.ceil(canvasHeight / BASED_TILE_SIZE);
 
@@ -98,23 +100,23 @@ function ImageZoom(props:ImageZoomProp) {
     let pinchedDistanceEnd: number = 0;
     let touchStarted: boolean = false;
 
-    let tiles:Tile[][];
+    let tiles:Tile[];
     let images:HTMLImageElement[] = [];
     let tilesPyramid:TilePyramid[];
 
     const strs:string[] = props.src.split("/");
     let imageFolder:string = strs[strs.length-2];
     let format:string = "dzi";
-    
+
     const [caption, setCaption] = createSignal("");
 
     onMount(async() => {
         // set canvas context
         context = canvas!.getContext("2d");
-        
+    
         // get image data
         const data = await fetch(props.src).then(res => res.json());
-        
+
         format = data.format;
         canvasOriW = data.width;
         canvasOriH = data.height;
@@ -122,19 +124,19 @@ function ImageZoom(props:ImageZoomProp) {
         canvasH = canvasOriH;
         cachedCanvas.width = canvasOriW;
         cachedCanvas.height = canvasOriH;
-        
-        // generate tile pyramid
-        tilesPyramid = generateTilePyramid(canvasOriW, canvasOriH, format);
 
-        setCaption(`${data.copyright} | ${data.caption}`)
+        // generate tile pyramid
+        tilesPyramid = generateTilePyramid(data.width, data.height, format);
         
+        setCaption(`${data.copyright} | ${data.caption}`)
+
         wrapper?.addEventListener("wheel", handleWeel);
         wrapper?.addEventListener("pointerdown", handlePointerDown);
         wrapper?.addEventListener("pointerup", handlePointerLeave);
         wrapper?.addEventListener("pointercancel", handlePointerLeave);
 
         window.addEventListener("resize", handleWindowResize);
-        
+
         handleWindowResize();
     });
 
@@ -151,7 +153,7 @@ function ImageZoom(props:ImageZoomProp) {
             canvasH -= canvasH * ZOOM_SPEED;
         }
         protectSize();
-        
+
         prevX = offsetX - (canvasW * ratioX);
         prevY = offsetY - (canvasH * ratioY);
 
@@ -169,10 +171,10 @@ function ImageZoom(props:ImageZoomProp) {
     }
     function handlePointerMove(e: PointerEvent): void {
         e.preventDefault();
-        
+        setCaption(typeof e)
         // update pointer values
         pointers = pointers.map(p => p.start.pointerId == e.pointerId ? { ...p, updated: e } : p);
-        
+
         if (pointers.length == 1) {
             const oldPointer: Pointer = pointers.find(p => p.start.pointerId == e.pointerId) || { start: e };
             translateX = Math.floor(prevX + e.pageX - oldPointer.start.pageX);
@@ -231,7 +233,7 @@ function ImageZoom(props:ImageZoomProp) {
             } else {
                 canvasW = (canvas?.getBoundingClientRect().width || canvasOriW);
                 canvasH = (canvasOriH / canvasOriW) * canvasW;
-                
+
             }
         }
 
@@ -262,7 +264,7 @@ function ImageZoom(props:ImageZoomProp) {
         const cursorX: number = offsetX - prevX;
         const cursorY: number = offsetY - prevY;
 
-        // Use the previous offset to get the percent offset between the bg edge and cursor:    
+        // Use the previous offset to get the percent offset between the bg edge and cursor:
         return {
             ratioX: cursorX / w,
             ratioY: cursorY / h,
@@ -279,12 +281,7 @@ function ImageZoom(props:ImageZoomProp) {
         redraw();
     }
 
-    function redraw (): void {
-        canvas!.width = canvas!.width;
-        context?.drawImage(cachedCanvas, 0, 0, canvasOriW, canvasOriH, translateX, translateY, canvasW, canvasH);
-
-        loadTiles()
-    };
+    
 
     let prevTilePyrnamid:TilePyramid|undefined;
     function generateTiles():void {
@@ -292,7 +289,7 @@ function ImageZoom(props:ImageZoomProp) {
         if(prevTilePyrnamid && prevTilePyrnamid.pathNum >= tile!.pathNum) return;
         prevTilePyrnamid = tile;
 
-        // reset tiles  
+        // reset tiles
         tiles = [];
 
         // cleans up images
@@ -308,49 +305,50 @@ function ImageZoom(props:ImageZoomProp) {
 
         while(y < tile!.tileYCount) {
             let x:number = 0;
-            let subTiles:Tile[] = [];
             
             while(x < lenX) {
-                subTiles.push({
+                tiles.push({
                     loaded: false,
+                    x:x, 
+                    y:y,
                     sizeW: (x < lenX - 1 ? BASED_TILE_SIZE : lastTileW),
                     sizeH: (y < lenY - 1 ? BASED_TILE_SIZE : lastTileH),
                     basedNum:pathNum
                 });
                 x++;
             }
-            tiles.push(subTiles)
+            
             y++;
         }
+
     }
 
     function loadTiles() {
-        
+        if(tiles.length == 0) return;
         let scale:number = 1 / Math.pow(2, prevTilePyrnamid?.pathNum - (format == "dzi" ? 1 : 0));
         // TODO: in case canvas height smaller than based tile size
         if(scale == 1 && (canvas?.height < BASED_TILE_SIZE)) scale = canvasH / canvasOriH;
 
         let tileSize:number = BASED_TILE_SIZE * scale;
-        
-        const viewPort:DOMRect = new DOMRect(0, 0, canvas?.width, canvas?.height);
 
-        tiles.forEach((ty, y) => {
-            ty.forEach((tx, x) => { 
-                if(!tx.loaded) {
-                    if(tx.loaded) return;
-                    
-                    let intersected = intersect(viewPort, new DOMRect(x * tileSize + translateX * scale, y * tileSize + translateY * scale, tx.sizeW * scale, tx.sizeH * scale));
-                    if(intersected && !tx.loaded) {
-                        tx.loaded = true;
-                        let img:HTMLImageElement = new Image()
-                        img.onload = onImageLoaded
-                        img.src = format == "dzi" ? `/images/${imageFolder}/${DZI_BASED_PATHNUMBER + tx.basedNum}/${x}_${y}.jpg`: `/images/${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + tx.basedNum}-${x}-${y}.jpg`;
-                        // add image to list for clean's up
-                        images.push(img);
-                    }
-                }
-            })
+        const viewPort:DOMRect = new DOMRect(0, 0, canvas?.width, canvas?.height);
+       
+        tiles.forEach((t, y) => {
+            
+            let intersected = intersect(viewPort, new DOMRect(t.x * tileSize + translateX * scale, t.y * tileSize + translateY * scale, t.sizeW * scale, t.sizeH * scale));
+            if(intersected) {
+                t.loaded = true;
+                let img:HTMLImageElement = new Image()
+                img.onload = onImageLoaded
+                img.src = format == "dzi" ? `/images/${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `/images/${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
+                // add image to list for clean's up
+                images.push(img);
+            }
+   
         })
+        
+        //cleans up loaded
+        tiles = tiles.filter(t => !t.loaded);
     }
 
     function onImageLoaded (e: Event) {
@@ -373,7 +371,7 @@ function ImageZoom(props:ImageZoomProp) {
                 posYChars = parseInt(posChars[1]);
                 basedChar = parseInt(chars[chars.length - 2]);
                 basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar-8);
-                break; 
+                break;
 
             case "zoomify":
                 posChars = chars[chars.length - 1].split("-");
@@ -383,16 +381,46 @@ function ImageZoom(props:ImageZoomProp) {
                 basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar);
                 break;
         }
-        
+
         if (!canvas) return;
 
         // update and save to temp canvas
-        cachedCtx?.drawImage(img, BASED_TILE_SIZE * basedValue * posXChars, BASED_TILE_SIZE * basedValue * posYChars, img.naturalWidth * basedValue, img.naturalHeight * basedValue);
-
+        const x:number = BASED_TILE_SIZE * basedValue * posXChars;
+        const y:number = BASED_TILE_SIZE * basedValue * posYChars;
+        if(x >= cachedCanvas.width) return;
+        if(y >= cachedCanvas.height) return;
+        const w:number = img.naturalWidth * basedValue;
+        const h:number = img.naturalHeight * basedValue
+        cachedCtx?.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x, y, w, h);//, x, y, w, h);
+       
         redraw();
 
         // remove loaded image from list
         images = images.filter(m => m.src == img.src);
+    };
+
+    let timeoutID:number;
+    function redraw (): void {
+        
+        // better solutions to release canvas memory
+        // https://pqina.nl/blog/total-canvas-memory-use-exceeds-the-maximum-limit/
+        // save canvas size
+        var w:number = canvas?.width;
+        var h:number = canvas?.height;
+        // make it small
+        canvas!.width = 1;
+        canvas!.height = 1;
+        context?.clearRect(0, 0, 1, 1);
+        // restore canvas size
+        canvas!.width = w;
+        canvas!.height = h;
+
+        context?.drawImage(cachedCanvas, 0, 0, canvasOriW, canvasOriH, translateX, translateY, canvasW, canvasH);
+
+        clearTimeout(timeoutID)
+        timeoutID = setTimeout(()=> {
+            loadTiles()
+        }, timeoutID == undefined ? 1 : 2000);
     };
 
     return (
