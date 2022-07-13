@@ -1,4 +1,4 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, onCleanup } from "solid-js";
 
 const ZOOM_SPEED:number = 0.1;
 const BASED_TILE_SIZE:number = 256;
@@ -139,6 +139,27 @@ function ImageZoom(props:ImageZoomProp) {
 
         handleWindowResize();
     });
+    
+    onCleanup(()=> {
+        // cleans up images
+        images.forEach(img => img.onload = null);
+        images = [];
+
+        // cleans up canvas memories
+        releaseCanvas(canvas);
+        releaseCanvas(cachedCanvas);
+
+        // cleans up event listener
+        wrapper?.removeEventListener("wheel", handleWeel);
+
+        wrapper?.removeEventListener("pointermove", handlePointerMove);
+        wrapper?.removeEventListener("pointerleave", handlePointerLeave);
+        wrapper?.removeEventListener("pointerdown", handlePointerDown);
+        wrapper?.removeEventListener("pointerup", handlePointerLeave);
+        wrapper?.removeEventListener("pointercancel", handlePointerLeave);
+
+        window.removeEventListener("resize", handleWindowResize);
+    })
 
     function handleWeel(e:WheelEvent): void {
         e.preventDefault();
@@ -223,6 +244,8 @@ function ImageZoom(props:ImageZoomProp) {
     }
 
     function handleWindowResize(e?:Event) {
+        wrapper?.style.setProperty('--height', `${window.innerHeight}px`);
+
         canvas.width = wrapper?.getBoundingClientRect().width;
         canvas.height = wrapper?.getBoundingClientRect().height;
         const sourceVertical:boolean = canvasOriH / canvasOriW > canvas.height / canvas.width;
@@ -401,16 +424,13 @@ function ImageZoom(props:ImageZoomProp) {
 
     let timeoutID:number;
     function redraw (): void {
-        
-        // better solutions to release canvas memory
-        // https://pqina.nl/blog/total-canvas-memory-use-exceeds-the-maximum-limit/
         // save canvas size
         var w:number = canvas?.width;
         var h:number = canvas?.height;
-        // make it small
-        canvas!.width = 1;
-        canvas!.height = 1;
-        context?.clearRect(0, 0, 1, 1);
+
+        // release memory
+        releaseCanvas(canvas);
+
         // restore canvas size
         canvas!.width = w;
         canvas!.height = h;
@@ -422,6 +442,17 @@ function ImageZoom(props:ImageZoomProp) {
             loadTiles()
         }, timeoutID == undefined ? 1 : 2000);
     };
+
+    // better solutions to release canvas memory
+    // https://pqina.nl/blog/total-canvas-memory-use-exceeds-the-maximum-limit/
+    function releaseCanvas(canvas:HTMLCanvasElement):void{
+        if(canvas == undefined) return;
+        
+        // make it small
+        canvas!.width = 1;
+        canvas!.height = 1;
+        context?.clearRect(0, 0, 1, 1);
+    }
 
     return (
         <div ref={wrapper} class="image-wrapper">
