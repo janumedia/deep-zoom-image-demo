@@ -1,18 +1,24 @@
 import { Component, createSignal } from 'solid-js';
 
-// import logo from './logo.svg';
-import styles from './App.module.css';
 import ImageZoom from './components/ImageZoom';
 
 const App: Component = () => {
   const [format, setFormat] = createSignal("dzi");
   return (
-    <div class={styles.App}>
-      <h1>Deep Zoom Image</h1>
-      <nav>
-        <div data-selected={format() == 'dzi'} onClick={()=>setFormat("dzi")}>DZI</div>
-        <div data-selected={format() == 'zoomify'} onClick={()=>setFormat("zoomify")}>Zoomify</div>
-      </nav>
+    <div class="App">
+      <header>
+        <div>
+          <h1>Deep Zoom Image</h1>
+          <h2>Tile Pyramid viewer example</h2>
+        </div>
+        <nav>
+          <span>Supported format:</span>
+          <ul>
+          <li data-selected={format() == 'dzi'} title="Deep Zoom Image format" onClick={()=>setFormat("dzi")}>DZI</li>
+          <li data-selected={format() == 'zoomify'} title="Zoomify Image format" onClick={()=>setFormat("zoomify")}>Zoomify</li>
+          </ul>
+        </nav>
+      </header>
       {format() == "dzi" && <ImageZoom src="/images/TM-10016388/imageproxy.json"></ImageZoom>}
       {format() == "zoomify" && <ImageZoom src="/images/Kuntisraya/imageproxy.json"></ImageZoom>}
       <div class="logos">
