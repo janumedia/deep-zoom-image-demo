@@ -2,6 +2,7 @@ import { createSignal, onMount, onCleanup } from "solid-js";
 
 const ZOOM_SPEED:number = 0.1;
 const BASED_TILE_SIZE:number = 256;
+const MAX_CANVAS_SIZE:number = 3800 * 3800; // performance purpose: we use below iOS max canvas size limitation (4096 * 4096)
 
 const DZI_BASED_PATHNUMBER:number = 8;
 const ZOOMIFY_BASED_PATHNUMBER:number = 1;
@@ -16,6 +17,12 @@ interface TypeRatio  {
     ratioY:number,
     offsetX:number,
     offsetY:number
+}
+
+interface CanvasSize {
+    width:number,
+    height:number,
+    scale:number
 }
 
 interface Tile {
@@ -47,8 +54,6 @@ function generateTilePyramid(w:number, h:number, format:string):TilePyramid[] {
     let step:number = Math.round(Math.log(h/BASED_TILE_SIZE)/Math.log(2));
 
     while(size > BASED_TILE_SIZE) {
-        let len:number = size / BASED_TILE_SIZE;
-
         let lenW:number = Math.ceil(canvasWidth / BASED_TILE_SIZE);
         let lenH:number = Math.ceil(canvasHeight / BASED_TILE_SIZE);
 
@@ -74,6 +79,24 @@ function intersect(r1:DOMRect, r2:DOMRect):boolean {
     return true;
 }
 
+function canvasSize(w:number, h:number):CanvasSize {
+    const sourceSize:number = w * h;
+    if(sourceSize < MAX_CANVAS_SIZE) return {width:w, height:h, scale:1};
+    const scale:number = Math.sqrt(MAX_CANVAS_SIZE) / Math.sqrt(sourceSize);
+    return {width:w * scale, height:h * scale, scale};
+}
+
+// better solutions to release canvas memory
+// https://pqina.nl/blog/total-canvas-memory-use-exceeds-the-maximum-limit/
+function releaseCanvas(canvas:HTMLCanvasElement):void{
+    if(canvas == undefined) return;
+    
+    // make it small
+    canvas.width = 1;
+    canvas.height = 1;
+    canvas.getContext("2d")?.clearRect(0, 0, 1, 1);
+}
+
 function ImageZoom(props:ImageZoomProp) {
     let canvas: HTMLCanvasElement | undefined;
     let wrapper: HTMLDivElement | undefined;
@@ -81,8 +104,9 @@ function ImageZoom(props:ImageZoomProp) {
 
     let canvasOriW:number = 0;
     let canvasOriH:number = 0;
-    let canvasW: number = canvasOriW;
-    let canvasH: number = canvasOriH;
+    let canvasW:number = canvasOriW;
+    let canvasH:number = canvasOriH;
+    let canvasScale:number = 1; // canvas scale compare to MAX_CANVAS_SIZE
 
     // cached canvas
     // use to saved original rendered canvas
@@ -104,8 +128,8 @@ function ImageZoom(props:ImageZoomProp) {
     let images:HTMLImageElement[] = [];
     let tilesPyramid:TilePyramid[];
 
-    const strs:string[] = props.src.split("/");
-    let imageFolder:string = strs[strs.length-2];
+    const imageFolder:string = props.src.substring(0, props.src.lastIndexOf("/"));
+
     let format:string = "dzi";
 
     const [caption, setCaption] = createSignal("");
@@ -120,13 +144,14 @@ function ImageZoom(props:ImageZoomProp) {
         format = data.format;
         canvasOriW = data.width;
         canvasOriH = data.height;
-        canvasW = canvasOriW;
-        canvasH = canvasOriH;
-        cachedCanvas.width = canvasOriW;
-        cachedCanvas.height = canvasOriH;
+
+        const {width, height, scale}  = canvasSize(canvasOriW, canvasOriH); 
+        canvasScale = scale;
+        cachedCanvas.width = canvasW = width;
+        cachedCanvas.height = canvasH = height;
 
         // generate tile pyramid
-        tilesPyramid = generateTilePyramid(data.width, data.height, format);
+        tilesPyramid = generateTilePyramid(canvasOriW, canvasOriH, format);
         
         setCaption(`${data.copyright} | ${data.caption}`)
 
@@ -248,14 +273,14 @@ function ImageZoom(props:ImageZoomProp) {
 
         canvas.width = wrapper?.getBoundingClientRect().width;
         canvas.height = wrapper?.getBoundingClientRect().height;
-        const sourceVertical:boolean = canvasOriH / canvasOriW > canvas.height / canvas.width;
+        const sourceVertical:boolean = cachedCanvas.height / cachedCanvas.width > canvas.height / canvas.width;
         if(e == undefined) {
             if(sourceVertical) {
-                canvasH = (canvas?.getBoundingClientRect().height || canvasOriH);
-                canvasW = (canvasOriW / canvasOriH) * canvasH;
+                canvasH = (canvas?.getBoundingClientRect().height || cachedCanvas.height);
+                canvasW = (cachedCanvas.width / cachedCanvas.height) * canvasH;
             } else {
-                canvasW = (canvas?.getBoundingClientRect().width || canvasOriW);
-                canvasH = (canvasOriH / canvasOriW) * canvasW;
+                canvasW = (canvas?.getBoundingClientRect().width || cachedCanvas.width);
+                canvasH = (cachedCanvas.height / cachedCanvas.width) * canvasW;
 
             }
         }
@@ -265,8 +290,8 @@ function ImageZoom(props:ImageZoomProp) {
     }
 
     function moveToCenter(isVertical:boolean): void {
-        prevX = (canvas?.getBoundingClientRect().width || canvasOriW) * .5 - (canvasW * .5);
-        prevY = isVertical && canvas.height <= canvasH ? 0 : (canvas?.getBoundingClientRect().height || canvasOriW) * .5 - (canvasH * .5);
+        prevX = (canvas?.getBoundingClientRect().width || cachedCanvas.width) * .5 - (canvasW * .5);
+        prevY = isVertical && canvas.height <= canvasH ? 0 : (canvas?.getBoundingClientRect().height || cachedCanvas.height) * .5 - (canvasH * .5);
         translateX = prevX;
         translateY = prevY;
 
@@ -274,8 +299,8 @@ function ImageZoom(props:ImageZoomProp) {
     }
 
     function protectSize(): void {
-        if(canvasH > canvasOriH) canvasH = canvasOriH;
-        if(canvasW > canvasOriW) canvasW = canvasOriW;
+        if(canvasH > cachedCanvas.height) canvasH = cachedCanvas.height;
+        if(canvasW > cachedCanvas.width) canvasW = cachedCanvas.width;
     }
 
     function ratio (x: number, y: number, w: number, h: number): TypeRatio {
@@ -343,9 +368,8 @@ function ImageZoom(props:ImageZoomProp) {
             
             y++;
         }
-
     }
-
+    
     function loadTiles() {
         if(tiles.length == 0) return;
         let scale:number = 1 / Math.pow(2, prevTilePyrnamid?.pathNum - (format == "dzi" ? 1 : 0));
@@ -363,7 +387,7 @@ function ImageZoom(props:ImageZoomProp) {
                 t.loaded = true;
                 let img:HTMLImageElement = new Image()
                 img.onload = onImageLoaded
-                img.src = format == "dzi" ? `/images/${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `/images/${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
+                img.src = format == "dzi" ? `${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
                 // add image to list for clean's up
                 images.push(img);
             }
@@ -393,7 +417,7 @@ function ImageZoom(props:ImageZoomProp) {
                 posXChars = parseInt(posChars[0]);
                 posYChars = parseInt(posChars[1]);
                 basedChar = parseInt(chars[chars.length - 2]);
-                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar-8);
+                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar-8) * canvasScale;
                 break;
 
             case "zoomify":
@@ -401,7 +425,7 @@ function ImageZoom(props:ImageZoomProp) {
                 basedChar = parseInt(posChars[0]);
                 posXChars = parseInt(posChars[1]);
                 posYChars = parseInt(posChars[2]);
-                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar);
+                basedValue = Math.pow(2, tilesPyramid.length) / Math.pow(2, basedChar) * canvasScale;
                 break;
         }
 
@@ -414,7 +438,7 @@ function ImageZoom(props:ImageZoomProp) {
         if(y >= cachedCanvas.height) return;
         const w:number = img.naturalWidth * basedValue;
         const h:number = img.naturalHeight * basedValue
-        cachedCtx?.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x, y, w, h);//, x, y, w, h);
+        cachedCtx?.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x, y, w, h);
        
         redraw();
 
@@ -434,25 +458,14 @@ function ImageZoom(props:ImageZoomProp) {
         // restore canvas size
         canvas!.width = w;
         canvas!.height = h;
-
-        context?.drawImage(cachedCanvas, 0, 0, canvasOriW, canvasOriH, translateX, translateY, canvasW, canvasH);
+        
+        context?.drawImage(cachedCanvas, 0, 0, cachedCanvas.width, cachedCanvas.height, translateX, translateY, canvasW, canvasH);
 
         clearTimeout(timeoutID)
         timeoutID = setTimeout(()=> {
             loadTiles()
         }, timeoutID == undefined ? 1 : 2000);
     };
-
-    // better solutions to release canvas memory
-    // https://pqina.nl/blog/total-canvas-memory-use-exceeds-the-maximum-limit/
-    function releaseCanvas(canvas:HTMLCanvasElement):void{
-        if(canvas == undefined) return;
-        
-        // make it small
-        canvas!.width = 1;
-        canvas!.height = 1;
-        context?.clearRect(0, 0, 1, 1);
-    }
 
     return (
         <div ref={wrapper} class="image-wrapper">
