@@ -386,8 +386,21 @@ function ImageZoom(props:ImageZoomProp) {
             if(intersected) {
                 t.loaded = true;
                 let img:HTMLImageElement = new Image()
-                img.onload = onImageLoaded
-                img.src = format == "dzi" ? `${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
+                img.onload = onImageLoaded;
+                switch(format) {
+                    default:
+                    case "dzi":
+                        img.src = `${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`;
+                        break;
+                    case "zoomify":
+                        // get folder num
+                        let tileNum:number = tilesPyramid.filter(tp => tp.pathNum < t.basedNum).map(tp => tp.tileXCount * tp.tileYCount).reduce((p, c)=>{
+                            return p + c;
+                        }, 0) + prevTilePyrnamid?.tileXCount * t.y + t.x + 1;
+                        img.src = `${imageFolder}/TileGroup${Math.floor(tileNum / BASED_TILE_SIZE)}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
+                        break;
+                }
+                // img.src = format == "dzi" ? `${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
                 // add image to list for clean's up
                 images.push(img);
             }

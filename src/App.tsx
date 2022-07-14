@@ -19,8 +19,8 @@ const App: Component = () => {
           </ul>
         </nav>
       </header>
-      {format() == "dzi" && <ImageZoom src="/images/TM-10016388/imageproxy.json"></ImageZoom>}
-      {format() == "zoomify" && <ImageZoom src="/images/Kuntisraya/imageproxy.json"></ImageZoom>}
+      {format() == "dzi" && <ImageZoom src="/images/dzi/imageproxy.json"></ImageZoom>}
+      {format() == "zoomify" && <ImageZoom src="/images/zoomify/imageproxy.json"></ImageZoom>}
       <div class="logos">
         <div>
           <a href="https://github.com/janumedia" title="Source Code" target="_blank" rel="noopener noreferrer">
