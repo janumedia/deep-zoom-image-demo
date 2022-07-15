@@ -128,10 +128,9 @@ function ImageZoom(props:ImageZoomProp) {
     let images:HTMLImageElement[] = [];
     let tilesPyramid:TilePyramid[];
 
-    const imageFolder:string = props.src.substring(0, props.src.lastIndexOf("/"));
-
     let format:string = "dzi";
-
+    let imageFolder:string = "";
+    
     const [caption, setCaption] = createSignal("");
 
     onMount(async() => {
@@ -142,13 +141,14 @@ function ImageZoom(props:ImageZoomProp) {
         const data = await fetch(props.src).then(res => res.json());
 
         format = data.format;
+        imageFolder = data.imagePath || props.src.substring(0, props.src.lastIndexOf("/"));
+        
+        const {width, height, scale}  = canvasSize(data.width, data.height); 
         canvasOriW = data.width;
         canvasOriH = data.height;
-
-        const {width, height, scale}  = canvasSize(canvasOriW, canvasOriH); 
-        canvasScale = scale;
         cachedCanvas.width = canvasW = width;
         cachedCanvas.height = canvasH = height;
+        canvasScale = scale;
 
         // generate tile pyramid
         tilesPyramid = generateTilePyramid(canvasOriW, canvasOriH, format);
@@ -385,7 +385,7 @@ function ImageZoom(props:ImageZoomProp) {
             if(intersected) {
                 
                 t.loaded = true;
-                let img:HTMLImageElement = new Image()
+                let img:HTMLImageElement = new Image();
                 img.onload = onImageLoaded;
                 switch(format) {
                     default:
