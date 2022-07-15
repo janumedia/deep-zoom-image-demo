@@ -331,16 +331,19 @@ function ImageZoom(props:ImageZoomProp) {
 
     
 
-    let prevTilePyrnamid:TilePyramid|undefined;
+    let currentTilePyrnamid:TilePyramid|undefined;
     function generateTiles():void {
-        let tile:TilePyramid|undefined = tilesPyramid.find(t => t.canvasWidth * 1.5 >= canvasW);
-        if(prevTilePyrnamid && prevTilePyrnamid.pathNum >= tile!.pathNum) return;
-        prevTilePyrnamid = tile;
+        // get match tile pyramid data based on current canvas size
+        // multiply by 75% to give some range
+        let tile:TilePyramid|undefined = tilesPyramid.find(t => canvasW * .75  <= t.canvasWidth);
+        
+        if(currentTilePyrnamid && currentTilePyrnamid.pathNum >= tile!.pathNum) return;
+        currentTilePyrnamid = tile;
 
         // reset tiles
         tiles = [];
 
-        // cleans up images
+        // cleans up images 
         images.forEach(img => img.onload = null);
         images = [];
 
@@ -372,18 +375,15 @@ function ImageZoom(props:ImageZoomProp) {
     
     function loadTiles() {
         if(tiles.length == 0) return;
-        let scale:number = 1 / Math.pow(2, prevTilePyrnamid?.pathNum - (format == "dzi" ? 1 : 0));
-        // TODO: in case canvas height smaller than based tile size
-        if(scale == 1 && (canvas?.height < BASED_TILE_SIZE)) scale = canvasH / canvasOriH;
-
-        let tileSize:number = BASED_TILE_SIZE * scale;
-
+        
+        let scale = canvasW / currentTilePyrnamid?.canvasWidth;
         const viewPort:DOMRect = new DOMRect(0, 0, canvas?.width, canvas?.height);
        
-        tiles.forEach((t, y) => {
+        tiles.forEach(t => {
             
-            let intersected = intersect(viewPort, new DOMRect(t.x * tileSize + translateX * scale, t.y * tileSize + translateY * scale, t.sizeW * scale, t.sizeH * scale));
+            let intersected = intersect(viewPort, new DOMRect(t.x * BASED_TILE_SIZE * scale + translateX, t.y * BASED_TILE_SIZE * scale + translateY, t.sizeW * scale, t.sizeH * scale));
             if(intersected) {
+                
                 t.loaded = true;
                 let img:HTMLImageElement = new Image()
                 img.onload = onImageLoaded;
@@ -396,11 +396,10 @@ function ImageZoom(props:ImageZoomProp) {
                         // get folder num
                         let tileNum:number = tilesPyramid.filter(tp => tp.pathNum < t.basedNum).map(tp => tp.tileXCount * tp.tileYCount).reduce((p, c)=>{
                             return p + c;
-                        }, 0) + prevTilePyrnamid?.tileXCount * t.y + t.x + 1;
+                        }, 0) + currentTilePyrnamid?.tileXCount * t.y + t.x + 1;
                         img.src = `${imageFolder}/TileGroup${Math.floor(tileNum / BASED_TILE_SIZE)}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
                         break;
                 }
-                // img.src = format == "dzi" ? `${imageFolder}/${DZI_BASED_PATHNUMBER + t.basedNum}/${t.x}_${t.y}.jpg`: `${imageFolder}/${ZOOMIFY_BASED_PATHNUMBER + t.basedNum}-${t.x}-${t.y}.jpg`;
                 // add image to list for clean's up
                 images.push(img);
             }
