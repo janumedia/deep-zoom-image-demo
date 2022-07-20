@@ -51,7 +51,8 @@ function generateTilePyramid(w:number, h:number, format:string):TilePyramid[] {
     let size:number = w > h ? w : h;
     let canvasWidth:number = w;
     let canvasHeight:number = h;
-    let step:number = Math.ceil(Math.log((w > h ? w : h)/BASED_TILE_SIZE)/Math.log(2));
+    let step:number = Math.log((w > h ? w : h)/BASED_TILE_SIZE)/Math.log(2);
+    step = format == "dzi" ? Math.round(step) : Math.floor(step);
 
     while(size > BASED_TILE_SIZE) {
         let lenW:number = Math.ceil(canvasWidth / BASED_TILE_SIZE);
